@@ -1,4 +1,4 @@
-name: Build, Push & Deploy to EKS
+name: Build & Push Image
 
 on:
   push:
@@ -7,13 +7,10 @@ on:
 
 env:
   DOCKER_IMAGE: khushibaby/abdm
-  AWS_REGION: ap-south-1
-  EKS_CLUSTER: eks-lab-cluster
-  K8S_NAMESPACE: abdm
 
 jobs:
-  build-and-deploy:
-    name: Build, Push & Deploy
+  build-and-push:
+    name: Build & Push
     runs-on: ubuntu-latest
 
     steps:
@@ -33,21 +30,3 @@ jobs:
           docker build -t $DOCKER_IMAGE:$IMAGE_TAG -t $DOCKER_IMAGE:latest .
           docker push $DOCKER_IMAGE:$IMAGE_TAG
           docker push $DOCKER_IMAGE:latest
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Update kubeconfig
-        run: |
-          aws eks update-kubeconfig --name $EKS_CLUSTER --region $AWS_REGION
-
-      - name: Update image in EKS
-        env:
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          kubectl set image deployment/abdm-wrapper abdm-wrapper=$DOCKER_IMAGE:$IMAGE_TAG -n $K8S_NAMESPACE
-          kubectl rollout status deployment/abdm-wrapper -n $K8S_NAMESPACE --timeout=300s
