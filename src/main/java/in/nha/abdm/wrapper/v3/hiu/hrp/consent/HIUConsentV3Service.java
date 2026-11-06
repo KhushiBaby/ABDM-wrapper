@@ -630,12 +630,18 @@ public class HIUConsentV3Service implements HIUConsentV3Interface {
         (String) requestLog.getResponseDetails().get(FieldIdentifiers.CONSENT_ON_INIT_RESPONSE);
     ConsentStatusRequest consentStatusRequest =
         ConsentStatusRequest.builder().consentRequestId(consentRequestId).build();
+    // The gateway's on-status callback carries this id as response.requestId (and often no
+    // consentRequest.id), so it must be persisted before the call or the callback cannot be
+    // matched to this request.
+    String consentStatusRequestId = UUID.randomUUID().toString();
+    requestLogService.saveConsentStatusRequestId(
+        requestLog.getGatewayRequestId(), consentStatusRequestId);
     ResponseEntity<GenericV3Response> response =
         requestV3Manager.fetchResponseFromGateway(
             consentStatusPath,
             consentStatusRequest,
             Utils.getCustomHeaders(
-                GatewayConstants.X_HIU_ID, requestLog.getHipId(), UUID.randomUUID().toString()));
+                GatewayConstants.X_HIU_ID, requestLog.getHipId(), consentStatusRequestId));
     if (response.getStatusCode().is2xxSuccessful()) {
       requestLogService.updateStatus(
           requestLog.getGatewayRequestId(), RequestStatus.CONSENT_STATUS_ACCEPTED);

@@ -29,6 +29,7 @@ public class FieldIdentifiers {
   public static final String CREATED_ON = "createdOn";
   public static final String MODULE = "module";
   public static final String LINK_TOKEN_REQUEST_ID = "linkTokenRequestId";
+  public static final String CONSENT_STATUS_REQUEST_ID = "consentStatusRequestId";
 
   // Patient table.
   public static final String NAME = "name";

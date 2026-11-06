@@ -155,6 +155,37 @@ public class RequestLogV3Service {
    * @param requestId
    * @param requestStatus
    */
+  /**
+   * Records the REQUEST-ID used for a consent-request/status call against the original consent
+   * request log, so the consent on-status callback (which echoes it as response.requestId) can be
+   * mapped back to the gateway request id.
+   */
+  public void saveConsentStatusRequestId(String gatewayRequestId, String consentStatusRequestId) {
+    Query query =
+        new Query(Criteria.where(FieldIdentifiers.GATEWAY_REQUEST_ID).is(gatewayRequestId));
+    Update update = new Update();
+    update.set(FieldIdentifiers.CONSENT_STATUS_REQUEST_ID, consentStatusRequestId);
+    update.set(FieldIdentifiers.LAST_UPDATED, Utils.getCurrentDateTime());
+    mongoTemplate.updateFirst(query, update, RequestLog.class);
+  }
+
+  /**
+   * Resolves the gateway request id of the consent request whose last status call used
+   * consentStatusRequestId as its REQUEST-ID.
+   */
+  public String getGatewayRequestIdByConsentStatusRequestId(String consentStatusRequestId)
+      throws IllegalDataStateException {
+    Query query =
+        new Query(
+            Criteria.where(FieldIdentifiers.CONSENT_STATUS_REQUEST_ID).is(consentStatusRequestId));
+    RequestLog requestLog = mongoTemplate.findOne(query, RequestLog.class);
+    if (Objects.isNull(requestLog)) {
+      throw new IllegalDataStateException(
+          "No request found for consent status request id: " + consentStatusRequestId);
+    }
+    return requestLog.getGatewayRequestId();
+  }
+
   public void updateStatus(String requestId, RequestStatus requestStatus) {
     log.info("GatewayRequestId: " + requestId + "requestStatus: " + requestStatus);
     Query query = new Query(Criteria.where(FieldIdentifiers.GATEWAY_REQUEST_ID).is(requestId));

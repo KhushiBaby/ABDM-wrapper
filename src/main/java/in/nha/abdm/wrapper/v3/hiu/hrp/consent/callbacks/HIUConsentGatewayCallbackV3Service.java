@@ -135,9 +135,7 @@ public class HIUConsentGatewayCallbackV3Service implements HIUConsentGatewayCall
       throws IllegalDataStateException, IllegalDataStateException {
     if (Objects.nonNull(hiuConsentOnStatusV3Request)
         && Objects.nonNull(hiuConsentOnStatusV3Request.getConsentRequest())) {
-      String gatewayRequestId =
-          consentRequestService.getGatewayRequestId(
-              hiuConsentOnStatusV3Request.getResponse().getRequestId());
+      String gatewayRequestId = resolveOnStatusGatewayRequestId(hiuConsentOnStatusV3Request);
       requestLogV3Service.updateConsentResponse(
           gatewayRequestId,
           FieldIdentifiers.CONSENT_ON_STATUS_RESPONSE,
@@ -151,6 +149,27 @@ public class HIUConsentGatewayCallbackV3Service implements HIUConsentGatewayCall
       return HttpStatus.BAD_REQUEST;
     }
     return HttpStatus.ACCEPTED;
+  }
+
+  /**
+   * The gateway's consent on-status callback identifies the request two ways: consentRequest.id
+   * (the id issued at on-init, mapped in ConsentRequest) when it sends one, and response.requestId,
+   * which echoes the REQUEST-ID of our consent-request/status call. The sandbox sends
+   * consentRequest.id=null, so the echoed status request id is the reliable key.
+   */
+  private String resolveOnStatusGatewayRequestId(HIUConsentOnStatusV3Request request)
+      throws IllegalDataStateException {
+    String consentRequestId = request.getConsentRequest().getId();
+    if (Objects.nonNull(consentRequestId) && !consentRequestId.isBlank()) {
+      return consentRequestService.getGatewayRequestId(consentRequestId);
+    }
+    if (Objects.isNull(request.getResponse())
+        || Objects.isNull(request.getResponse().getRequestId())) {
+      throw new IllegalDataStateException(
+          "Consent on-status carries neither consentRequest.id nor response.requestId");
+    }
+    return requestLogV3Service.getGatewayRequestIdByConsentStatusRequestId(
+        request.getResponse().getRequestId());
   }
 
   @Override

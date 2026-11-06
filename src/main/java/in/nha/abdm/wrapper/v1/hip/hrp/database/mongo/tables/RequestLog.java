@@ -20,6 +20,12 @@ public class RequestLog {
   @Field("linkTokenRequestId")
   public String linkTokenRequestId;
 
+  // REQUEST-ID sent on the HIU consent-request/status call. The gateway echoes it back
+  // in consent on-status as response.requestId, which is the only way to find this log
+  // when the callback carries no consentRequest.id.
+  @Field("consentStatusRequestId")
+  public String consentStatusRequestId;
+
   @Field("transactionId")
   public String transactionId;
 
