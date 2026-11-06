@@ -180,8 +180,12 @@ public class HIUConsentGatewayCallbackV3Service implements HIUConsentGatewayCall
         && Objects.isNull(notifyHIURequest.getError())) {
       // Get corresponding gateway request for the given consent request id.
       if (!notifyHIURequest.getNotification().getStatus().equalsIgnoreCase("GRANTED")) {
+        // A DENIED (or EXPIRED-before-grant) notification carries no consentArtefacts; the
+        // acknowledgement is then empty rather than the callback failing with an NPE and
+        // leaving the gateway without an on-notify.
         List<ConsentArtefact> consentArtefacts =
-            notifyHIURequest.getNotification().getConsentArtefacts();
+            Optional.ofNullable(notifyHIURequest.getNotification().getConsentArtefacts())
+                .orElseGet(Collections::emptyList);
         if (notifyHIURequest.getNotification().getStatus().equalsIgnoreCase("DENIED")) {
           String gatewayRequestId =
               consentRequestService.getGatewayRequestId(
@@ -207,8 +211,7 @@ public class HIUConsentGatewayCallbackV3Service implements HIUConsentGatewayCall
           }
         }
         List<ConsentAcknowledgement> consentAcknowledgements = new ArrayList<>();
-        for (ConsentArtefact consentArtefact :
-            notifyHIURequest.getNotification().getConsentArtefacts()) {
+        for (ConsentArtefact consentArtefact : consentArtefacts) {
           consentAcknowledgements.add(
               ConsentAcknowledgement.builder()
                   .status("OK")
