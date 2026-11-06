@@ -180,9 +180,7 @@ public class HIUConsentGatewayCallbackV3Service implements HIUConsentGatewayCall
         && Objects.isNull(notifyHIURequest.getError())) {
       // Get corresponding gateway request for the given consent request id.
       if (!notifyHIURequest.getNotification().getStatus().equalsIgnoreCase("GRANTED")) {
-        // A DENIED (or EXPIRED-before-grant) notification carries no consentArtefacts; the
-        // acknowledgement is then empty rather than the callback failing with an NPE and
-        // leaving the gateway without an on-notify.
+        // A DENIED (or EXPIRED-before-grant) notification carries no consentArtefacts.
         List<ConsentArtefact> consentArtefacts =
             Optional.ofNullable(notifyHIURequest.getNotification().getConsentArtefacts())
                 .orElseGet(Collections::emptyList);
@@ -209,6 +207,17 @@ public class HIUConsentGatewayCallbackV3Service implements HIUConsentGatewayCall
                 notifyHIURequest.getTimestamp(),
                 httpHeaders.getFirst(GatewayConstants.X_HIU_ID));
           }
+        }
+        if (consentArtefacts.isEmpty()) {
+          // The gateway rejects every on-notify shape for an artefact-less notification
+          // (empty acknowledgement: "should not be null or empty"; consentRequestId as
+          // consentId: "Invalid Consent artefact id"), and it already has our 202 for the
+          // notify itself, so there is nothing to acknowledge.
+          log.info(
+              "hiuNotify status={} consentRequestId={} has no artefacts; skipping on-notify",
+              notifyHIURequest.getNotification().getStatus(),
+              notifyHIURequest.getNotification().getConsentRequestId());
+          return HttpStatus.OK;
         }
         List<ConsentAcknowledgement> consentAcknowledgements = new ArrayList<>();
         for (ConsentArtefact consentArtefact : consentArtefacts) {
