@@ -4,6 +4,7 @@ package in.nha.abdm.wrapper.v3.hip.hrp.dataTransfer;
 import in.nha.abdm.wrapper.v1.common.GatewayConstants;
 import in.nha.abdm.wrapper.v1.common.Utils;
 import in.nha.abdm.wrapper.v1.common.exceptions.IllegalDataStateException;
+import in.nha.abdm.wrapper.v1.common.models.ConsentDetail;
 import in.nha.abdm.wrapper.v1.common.models.RespRequest;
 import in.nha.abdm.wrapper.v1.common.requests.*;
 import in.nha.abdm.wrapper.v1.common.responses.ErrorResponse;
@@ -25,6 +26,7 @@ import in.nha.abdm.wrapper.v1.hip.hrp.database.mongo.tables.RequestLog;
 import in.nha.abdm.wrapper.v1.hip.hrp.database.mongo.tables.helpers.FieldIdentifiers;
 import in.nha.abdm.wrapper.v1.hip.hrp.database.mongo.tables.helpers.RequestStatus;
 import in.nha.abdm.wrapper.v1.hiu.hrp.consent.requests.ConsentCareContexts;
+import in.nha.abdm.wrapper.v1.hiu.hrp.consent.requests.DateRange;
 import in.nha.abdm.wrapper.v3.common.RequestV3Manager;
 import in.nha.abdm.wrapper.v3.common.exceptions.BadRequestHandler;
 import in.nha.abdm.wrapper.v3.common.models.GenericV3Response;
@@ -243,16 +245,34 @@ public class HIPHealthInformationV3Service implements HIPHealthInformationV3Inte
     if (existingConsentLog == null) {
       throw new IllegalDataStateException("consent id not found in db");
     }
+    ConsentDetail consentDetail = hipNotifyRequest.getNotification().getConsentDetail();
     HealthInformationBundleRequest healthInformationBundleRequest =
         HealthInformationBundleRequest.builder()
             .hipId(hipId)
             .careContextsWithPatientReferences(existingConsentLog.getCareContexts())
+            .hiTypes(consentDetail.getHiTypes())
+            .dateRange(consentedDateRange(hipHealthInformationRequest, consentDetail))
             .build();
     requestLogV3Service.updateConsentStatus(
         existingConsentLog.getConsentId(), null, RequestStatus.FETCHING_BUNDLE);
     log.debug(
         "Health information bundle request HIP : " + healthInformationBundleRequest.toString());
     return hipClient.healthInformationBundleRequest(healthInformationBundleRequest).getBody();
+  }
+
+  /**
+   * The date range the HIP may share records from: the range of this health information request,
+   * which the consent manager has already checked against the consent, else the consent's own.
+   */
+  static DateRange consentedDateRange(
+      HIPHealthInformationRequest hipHealthInformationRequest, ConsentDetail consentDetail) {
+    if (hipHealthInformationRequest.getHiRequest() != null
+        && hipHealthInformationRequest.getHiRequest().getDateRange() != null) {
+      return hipHealthInformationRequest.getHiRequest().getDateRange();
+    }
+    return consentDetail.getPermission() == null
+        ? null
+        : consentDetail.getPermission().getDateRange();
   }
 
   /**
