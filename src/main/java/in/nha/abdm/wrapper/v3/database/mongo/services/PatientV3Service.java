@@ -189,7 +189,10 @@ public class PatientV3Service {
   }
 
   public void addConsent(String abhaAddress, Consent consent, String hipId) {
-    log.info("{} Consent : {}", abhaAddress, consent.toString());
+    log.info(
+        "Saving consent {} status={}",
+        consent.getConsentDetail().getConsentId(),
+        consent.getStatus());
     Patient patient = patientRepo.findByAbhaAddress(abhaAddress, hipId);
     if (Objects.isNull(patient)) {
       log.warn("Patient not found in database: " + abhaAddress);
@@ -229,7 +232,7 @@ public class PatientV3Service {
             Update updateConsent = new Update().set(FieldIdentifiers.CONSENTS + ".$", consent);
             mongoTemplate.updateFirst(updateConsentQuery, updateConsent, Patient.class);
           } else {
-            log.warn("Consent {} already exists for patient {}.", consent, abhaAddress);
+            log.warn("Consent {} already exists.", consent.getConsentDetail().getConsentId());
           }
           return;
         }

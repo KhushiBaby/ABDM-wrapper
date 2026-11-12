@@ -92,7 +92,7 @@ public class DiscoveryV3Service implements DiscoveryV3Interface {
     // and patient reference number.
     if (Objects.nonNull(patient)) {
 
-      log.info("Patient found {}::{}", patient.getName(), patient.getAbhaAddress());
+      log.info("Patient found for discovery");
       CompletableFuture.runAsync(
           () -> {
             try {

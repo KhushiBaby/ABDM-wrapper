@@ -12,6 +12,7 @@ import in.nha.abdm.wrapper.v1.hip.hrp.consent.requests.HIPNotifyRequest;
 import in.nha.abdm.wrapper.v1.hip.hrp.consent.requests.HIPOnNotifyRequest;
 import in.nha.abdm.wrapper.v1.hip.hrp.dataTransfer.requests.helpers.ConsentAcknowledgement;
 import in.nha.abdm.wrapper.v1.hip.hrp.database.mongo.services.ConsentCareContextsService;
+import in.nha.abdm.wrapper.v1.hip.hrp.database.mongo.tables.ConsentPatient;
 import in.nha.abdm.wrapper.v1.hip.hrp.database.mongo.tables.helpers.RequestStatus;
 import in.nha.abdm.wrapper.v3.common.RequestV3Manager;
 import in.nha.abdm.wrapper.v3.common.exceptions.BadRequestHandler;
@@ -19,6 +20,7 @@ import in.nha.abdm.wrapper.v3.common.models.GenericV3Response;
 import in.nha.abdm.wrapper.v3.database.mongo.services.ConsentPatientV3Service;
 import in.nha.abdm.wrapper.v3.database.mongo.services.PatientV3Service;
 import in.nha.abdm.wrapper.v3.database.mongo.services.RequestLogV3Service;
+import java.util.Objects;
 import java.util.UUID;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -58,6 +60,13 @@ public class ConsentV3Service implements ConsentV3Interface {
       throws IllegalDataStateException {
     HIPOnNotifyRequest hipOnNotifyRequest = null;
     if (hipNotifyRequest != null
+        && hipNotifyRequest.getNotification() != null
+        && hipNotifyRequest.getNotification().getConsentId() != null
+        && !"GRANTED".equalsIgnoreCase(hipNotifyRequest.getNotification().getStatus())) {
+
+      hipOnNotifyRequest = updateConsentStatus(hipNotifyRequest.getNotification(), headers);
+
+    } else if (hipNotifyRequest != null
         && hipNotifyRequest.getNotification() != null
         && hipNotifyRequest.getNotification().getConsentDetail() != null
         && hipNotifyRequest.getNotification().getConsentDetail().getPatient() != null) {
@@ -122,9 +131,6 @@ public class ConsentV3Service implements ConsentV3Interface {
     HIPNotification hipNotification = hipNotifyRequest.getNotification();
     RespRequest responseRequestId =
         RespRequest.builder().requestId(headers.getFirst(GatewayConstants.REQUEST_ID)).build();
-    if (hipNotification.getStatus().equalsIgnoreCase("REVOKED")) {
-      return updateConsentStatus(hipNotification, headers);
-    }
     Consent consent =
         Consent.builder()
             .grantedOn(headers.getFirst(GatewayConstants.TIMESTAMP))
@@ -164,31 +170,45 @@ public class ConsentV3Service implements ConsentV3Interface {
         .build();
   }
 
-  public HIPOnNotifyRequest updateConsentStatus(
-      HIPNotification hipNotification, HttpHeaders headers) throws IllegalDataStateException {
-    Consent existingConsent =
-        patientService.getConsentDetails(
-            hipNotification.getConsentDetail().getPatient().getId(),
-            hipNotification.getConsentId(),
-            headers.getFirst(GatewayConstants.X_HIP_ID));
-    existingConsent.setRevokedOn(headers.getFirst(GatewayConstants.TIMESTAMP));
-    existingConsent.setStatus(hipNotification.getStatus());
-    existingConsent.setLastUpdatedOn(Utils.getCurrentTimeStamp());
-    existingConsent.setConsentDetail(hipNotification.getConsentDetail());
-    // Updating the revoked status timeStamp and status
-    patientService.addConsent(
-        hipNotification.getConsentDetail().getPatient().getId(),
-        existingConsent,
-        headers.getFirst(GatewayConstants.X_HIP_ID));
+  /**
+   * Records a REVOKED or EXPIRED notification against the consent saved when it was granted, and
+   * acknowledges it.
+   *
+   * <p>Unlike a grant, these notifications carry only the consent id and status, with no
+   * consentDetail. The patient is found through the consent-patient mapping saved at grant time.
+   * This used to require consentDetail.patient, so every revocation was answered FAILURE and never
+   * recorded.
+   */
+  HIPOnNotifyRequest updateConsentStatus(HIPNotification hipNotification, HttpHeaders headers) {
+    String consentId = hipNotification.getConsentId();
+    String hipId = headers.getFirst(GatewayConstants.X_HIP_ID);
     RespRequest responseRequestId =
         RespRequest.builder().requestId(headers.getFirst(GatewayConstants.REQUEST_ID)).build();
-    ConsentAcknowledgement dataAcknowledgement =
-        ConsentAcknowledgement.builder()
-            .status("OK")
-            .consentId(hipNotification.getConsentDetail().getConsentId())
-            .build();
+    ConsentPatient consentPatient =
+        consentPatientService.findMappingByConsentId(consentId, GatewayConstants.HIP, hipId);
+    if (Objects.isNull(consentPatient)) {
+      log.warn(
+          "hip/notify status={} for unknown consentId={}", hipNotification.getStatus(), consentId);
+      return HIPOnNotifyRequest.builder()
+          .acknowledgement(
+              ConsentAcknowledgement.builder().status("FAILURE").consentId(consentId).build())
+          .error(
+              ErrorResponse.builder()
+                  .code(GatewayConstants.ERROR_CODE)
+                  .message("Consent not found: " + consentId)
+                  .build())
+          .response(responseRequestId)
+          .build();
+    }
+    patientService.updatePatientConsent(
+        consentPatient.getAbhaAddress(),
+        consentId,
+        hipNotification.getStatus(),
+        headers.getFirst(GatewayConstants.TIMESTAMP),
+        hipId);
+    log.info("hip/notify recorded status={} consentId={}", hipNotification.getStatus(), consentId);
     return HIPOnNotifyRequest.builder()
-        .acknowledgement(dataAcknowledgement)
+        .acknowledgement(ConsentAcknowledgement.builder().status("OK").consentId(consentId).build())
         .response(responseRequestId)
         .build();
   }
