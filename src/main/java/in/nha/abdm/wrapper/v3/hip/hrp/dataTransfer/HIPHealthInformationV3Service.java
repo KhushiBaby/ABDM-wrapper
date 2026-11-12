@@ -266,7 +266,8 @@ public class HIPHealthInformationV3Service implements HIPHealthInformationV3Inte
       String consentId,
       HttpHeaders headers) {
     try {
-      log.debug("HealthInformationBundle : " + healthInformationBundleResponse);
+      // The bundle is unencrypted health information here, so only its presence is logged.
+      log.debug("HealthInformationBundle received: " + (healthInformationBundleResponse != null));
       RequestLog requestLog =
           requestLogV3Service.findByConsentId(
               consentId, GatewayConstants.HIP, headers.getFirst(GatewayConstants.X_HIP_ID));

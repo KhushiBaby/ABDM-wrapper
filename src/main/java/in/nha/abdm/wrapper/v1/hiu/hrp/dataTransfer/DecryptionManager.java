@@ -101,7 +101,8 @@ public class DecryptionManager {
     JsonParser jsonParser = new JsonParser();
     decryptedData =
         String.valueOf(jsonParser.parse(new String(plainBytes, StandardCharsets.UTF_8)));
-    log.debug("decryptedData :" + decryptedData);
+    // Health information is never written to the log, at any level.
+    log.debug("decrypted health information: " + decryptedData.length() + " chars");
     return decryptedData;
   }
 
