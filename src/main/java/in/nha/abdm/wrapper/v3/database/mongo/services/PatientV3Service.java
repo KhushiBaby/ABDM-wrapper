@@ -221,6 +221,11 @@ public class PatientV3Service {
                                 + ".consentDetail."
                                 + FieldIdentifiers.CONSENT_ID)
                         .is(consent.getConsentDetail().getConsentId()));
+            // The fuller copy comes from the consent fetch, which carries no grant time.
+            // Replacing the stored consent with it wiped the time recorded from the notify.
+            if (Objects.isNull(consent.getGrantedOn())) {
+              consent.setGrantedOn(storedConsent.getGrantedOn());
+            }
             Update updateConsent = new Update().set(FieldIdentifiers.CONSENTS + ".$", consent);
             mongoTemplate.updateFirst(updateConsentQuery, updateConsent, Patient.class);
           } else {
