@@ -19,7 +19,6 @@ import in.nha.abdm.wrapper.v3.common.models.GenericV3Response;
 import in.nha.abdm.wrapper.v3.database.mongo.services.ConsentPatientV3Service;
 import in.nha.abdm.wrapper.v3.database.mongo.services.PatientV3Service;
 import in.nha.abdm.wrapper.v3.database.mongo.services.RequestLogV3Service;
-import java.util.Objects;
 import java.util.UUID;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -85,6 +84,7 @@ public class ConsentV3Service implements ConsentV3Interface {
                       .build())
               .build();
     }
+    RequestStatus requestStatus = RequestStatus.HIP_ON_NOTIFY_ERROR;
     try {
       log.info(hipOnNotifyRequest.toString());
       ResponseEntity<GenericV3Response> response =
@@ -97,26 +97,24 @@ public class ConsentV3Service implements ConsentV3Interface {
                   UUID.randomUUID().toString()));
       log.debug(consentOnNotifyPath + " : consentOnNotify: " + response.getStatusCode());
       if (response.getStatusCode() == HttpStatus.ACCEPTED) {
-        requestLogV3Service.dataTransferNotify(
-            hipNotifyRequest, RequestStatus.HIP_ON_NOTIFY_SUCCESS, hipOnNotifyRequest, headers);
-      } else if (Objects.nonNull(response.getBody())
-          && Objects.nonNull(response.getBody().getError())) {
-        requestLogV3Service.dataTransferNotify(
-            hipNotifyRequest, RequestStatus.HIP_ON_NOTIFY_ERROR, hipOnNotifyRequest, headers);
+        requestStatus = RequestStatus.HIP_ON_NOTIFY_SUCCESS;
       }
     } catch (WebClientResponseException.BadRequest ex) {
       Object error = BadRequestHandler.getError(ex);
       log.error("HTTP error {}: {}", ex.getStatusCode(), error);
-      requestLogV3Service.dataTransferNotify(
-          hipNotifyRequest, RequestStatus.HIP_ON_NOTIFY_ERROR, hipOnNotifyRequest, headers);
     } catch (Exception ex) {
-      String error =
-          "Exception while Initiating consentOnNotify onNotify: "
-              + ex.getMessage()
-              + " unwrapped exception: "
-              + Exceptions.unwrap(ex);
-      log.debug(error);
+      log.error(
+          "consentOnNotify to gateway failed for consentId {}: {} unwrapped exception: {}",
+          hipNotifyRequest.getNotification().getConsentId(),
+          ex.getMessage(),
+          Exceptions.unwrap(ex));
     }
+    // Saved whatever the gateway answered. This log carries the notify payload the
+    // health-information request reads later, and the gateway sends that request even
+    // when this acknowledgement timed out or was refused; it never resends the notify.
+    // Skipping the save made every data transfer for the consent fail.
+    requestLogV3Service.dataTransferNotify(
+        hipNotifyRequest, requestStatus, hipOnNotifyRequest, headers);
   }
 
   public HIPOnNotifyRequest checkAndSaveConsent(
