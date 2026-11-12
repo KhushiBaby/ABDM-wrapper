@@ -377,8 +377,11 @@ public class HIUV3FacadeHealthInformationService implements HIUV3FacadeHealthInf
             .dataPushUrl(dataPushUrl)
             .keyMaterial(healthInformationKeyMaterial)
             .build();
-    consentCipherMappingService.saveConsentPrivateKeyMapping(
-        hiuClientHealthInformationRequest.getConsentId(), key.getPrivateKey(), key.getNonce());
+    consentCipherMappingService.saveFetchKey(
+        hiuClientHealthInformationRequest.getRequestId(),
+        hiuClientHealthInformationRequest.getConsentId(),
+        key.getPrivateKey(),
+        key.getNonce());
     return HIUGatewayHealthInformationRequest.builder()
         .requestId(hiuClientHealthInformationRequest.getRequestId())
         .timestamp(Utils.getCurrentTimeStamp())

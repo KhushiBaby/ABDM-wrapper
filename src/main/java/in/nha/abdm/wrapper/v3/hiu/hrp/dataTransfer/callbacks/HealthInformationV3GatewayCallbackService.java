@@ -56,8 +56,10 @@ public class HealthInformationV3GatewayCallbackService
           "Consent id not found for transaction id: "
               + onHealthInformationRequest.getHiRequest().getTransactionId());
     }
-    consentCipherMappingService.updateTransactionId(
-        consentId, onHealthInformationRequest.getHiRequest().getTransactionId());
+    consentCipherMappingService.updateFetchTransactionId(
+        onHealthInformationRequest.getResponse().getRequestId(),
+        consentId,
+        onHealthInformationRequest.getHiRequest().getTransactionId());
     return HttpStatus.ACCEPTED;
   }
 }
