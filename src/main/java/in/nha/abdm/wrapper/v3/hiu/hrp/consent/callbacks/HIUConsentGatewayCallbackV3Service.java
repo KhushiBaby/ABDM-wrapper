@@ -184,7 +184,10 @@ public class HIUConsentGatewayCallbackV3Service implements HIUConsentGatewayCall
         List<ConsentArtefact> consentArtefacts =
             Optional.ofNullable(notifyHIURequest.getNotification().getConsentArtefacts())
                 .orElseGet(Collections::emptyList);
-        if (notifyHIURequest.getNotification().getStatus().equalsIgnoreCase("DENIED")) {
+        // Without artefacts the notification is about the request itself, not a granted
+        // consent: DENIED, or EXPIRED when nobody answered it. Store it on the request so
+        // consent status reports it. An EXPIRED one used to fall through and be lost.
+        if (consentArtefacts.isEmpty()) {
           String gatewayRequestId =
               consentRequestService.getGatewayRequestId(
                   notifyHIURequest.getNotification().getConsentRequestId());

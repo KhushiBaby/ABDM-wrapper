@@ -33,6 +33,8 @@ import in.nha.abdm.wrapper.v3.hip.HIPV3Client;
 import in.nha.abdm.wrapper.v3.hiu.hrp.consent.requests.ConsentOnNotifyV3Request;
 import in.nha.abdm.wrapper.v3.hiu.hrp.consent.responses.ConsentStatusV3Response;
 import in.nha.abdm.wrapper.v3.hiu.hrp.consent.responses.ConsentV3Response;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -43,6 +45,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.Exceptions;
 
@@ -245,6 +248,12 @@ public class HIUConsentV3Service implements HIUConsentV3Interface {
           && Objects.nonNull(
               requestLog.getResponseDetails().get(FieldIdentifiers.CONSENT_ON_STATUS_RESPONSE))) {
         log.info("Got: " + FieldIdentifiers.CONSENT_ON_STATUS_RESPONSE);
+        if (onStatusIsStale(requestLog, Utils.getCurrentDateTime())) {
+          // The stored answer says the request is still waiting on the patient. Ask the
+          // gateway again so that an expiry reaches the caller; otherwise this answer is
+          // replayed forever.
+          return fetchConsentStatus(requestLog);
+        }
         return consentOnStatusResponse(requestLog);
       }
 
@@ -457,7 +466,10 @@ public class HIUConsentV3Service implements HIUConsentV3Interface {
         (NotifyHIURequest)
             requestLog.getResponseDetails().get(FieldIdentifiers.CONSENT_ON_NOTIFY_RESPONSE);
     Notification notification = notifyHIURequest.getNotification();
-    if (Objects.nonNull(notification) && notification.getStatus().equalsIgnoreCase("DENIED")) {
+    if (Objects.nonNull(notification)
+        && (notification.getStatus().equalsIgnoreCase("DENIED")
+            || CollectionUtils.isEmpty(notification.getConsentArtefacts()))) {
+      boolean denied = notification.getStatus().equalsIgnoreCase("DENIED");
       return ConsentStatusV3Response.builder()
           .status(requestLog.getStatus())
           .httpStatusCode(HttpStatus.OK)
@@ -468,7 +480,7 @@ public class HIUConsentV3Service implements HIUConsentV3Interface {
                   : null)
           .consentDetails(
               FacadeConsentDetails.builder()
-                  .deniedOn(notifyHIURequest.getTimestamp())
+                  .deniedOn(denied ? notifyHIURequest.getTimestamp() : null)
                   .consent(
                       Collections.singletonList(
                           ConsentStatus.builder().status(notification.getStatus()).build()))
@@ -603,6 +615,27 @@ public class HIUConsentV3Service implements HIUConsentV3Interface {
               "Updated consent status to EXPIRED for consentId: "
                   + consent.getConsentDetail().getConsentId());
         });
+  }
+
+  /** How long a stored "still requested" on-status answer is reused before asking again. */
+  static final Duration ON_STATUS_REFRESH_AFTER = Duration.ofMinutes(5);
+
+  /**
+   * Whether the stored on-status answer should be refreshed from the gateway: it says the request
+   * is still REQUESTED, the request has a consent request id to ask about, and the answer is older
+   * than {@link #ON_STATUS_REFRESH_AFTER}. Final answers are never refreshed.
+   */
+  static boolean onStatusIsStale(RequestLog requestLog, LocalDateTime now) {
+    Object stored =
+        requestLog.getResponseDetails().get(FieldIdentifiers.CONSENT_ON_STATUS_RESPONSE);
+    if (!(stored instanceof ConsentStatus consentStatus)
+        || !"REQUESTED".equalsIgnoreCase(consentStatus.getStatus())
+        || Objects.isNull(
+            requestLog.getResponseDetails().get(FieldIdentifiers.CONSENT_ON_INIT_RESPONSE))
+        || Objects.isNull(requestLog.getLastUpdated())) {
+      return false;
+    }
+    return requestLog.getLastUpdated().plus(ON_STATUS_REFRESH_AFTER).isBefore(now);
   }
 
   private ConsentStatusV3Response consentOnStatusResponse(RequestLog requestLog) {
